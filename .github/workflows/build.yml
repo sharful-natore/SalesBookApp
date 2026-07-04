@@ -1,4 +1,4 @@
-name: Android Super-Fix and Build Pipeline
+name: Android Clean Build Pipeline
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
 
 jobs:
   build:
-    name: Auto-Repair App and Compile APK
+    name: Compile App APK
     runs-on: ubuntu-latest
 
     steps:
@@ -26,68 +26,6 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      # অ্যাপ ওপেন নিশ্চিত করার প্রধান ধাপ ১: এক্সএমএল পার্সিং এরর এড়াতে নিখুঁতভাবে মেনিফেস্ট ফিক্স করা
-      - name: Safely Inject Permissions and Attributes into Manifest
-        run: |
-          MANIFEST_PATH=$(find . -name "AndroidManifest.xml" | grep -v "build" | head -n 1)
-          if [ ! -z "$MANIFEST_PATH" ]; then
-            echo "Modifying Manifest at $MANIFEST_PATH safely..."
-            
-            # ইন্টারনেট পারমিশন আগেই থাকলে ডুপ্লিকেট এড়াতে এবং নতুন করে যুক্ত করতে এই কমান্ড
-            sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' $MANIFEST_PATH
-            
-            # HTTP/WebView সাপোর্ট নিশ্চিত করতে cleartextTraffic যুক্ত করা
-            sed -i 's/<application/<application android:usesCleartextTraffic="true"/g' $MANIFEST_PATH
-          else
-            echo "Error: AndroidManifest.xml not found!"
-          fi
-
-      # অ্যাপ ওপেন নিশ্চিত করার প্রধান ধাপ ২: MainActivity-এর ভেতরের ক্র্যাশ লজিক বাইপাস করা
-      - name: Patch MainActivity.kt for Fresh Launch
-        run: |
-          ACTUAL_PATH=$(find . -name "MainActivity.kt" | grep -v "build" | head -n 1)
-          if [ ! -z "$ACTUAL_PATH" ]; then
-            echo "Patching MainActivity at $ACTUAL_PATH..."
-            cat << 'EOF' > "$ACTUAL_PATH"
-            package com.example.ui
-
-            import android.os.Bundle
-            import androidx.activity.ComponentActivity
-            import androidx.activity.compose.setContent
-            import androidx.compose.foundation.layout.fillMaxSize
-            import androidx.compose.material3.MaterialTheme
-            import androidx.compose.material3.Surface
-            import androidx.compose.material3.Text
-            import androidx.compose.runtime.Composable
-            import androidx.compose.ui.Modifier
-            import androidx.compose.foundation.layout.Box
-            import androidx.compose.ui.Alignment
-
-            class MainActivity : ComponentActivity() {
-                override fun onCreate(savedInstanceState: Bundle?) {
-                    super.onCreate(savedInstanceState)
-                    setContent {
-                        Surface(
-                            modifier = Modifier.fillMaxSize(),
-                            color = MaterialTheme.colorScheme.background
-                        ) {
-                            try {
-                                AppNavigation()
-                            } catch (e: Exception) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text(text = "Welcome to Sales Book")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-          EOF
-          else
-            echo "Warning: MainActivity.kt not found, skipping patch."
-          fi
-
-      # ধাপ ৩: ডাইনামিক পাথে বিল্ড স্ক্রিপ্ট রান করা
       - name: Build Debug APK
         run: |
           GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
@@ -102,10 +40,9 @@ jobs:
             gradle assembleDebug --no-daemon
           fi
 
-      # ধাপ ৪: তৈরি হওয়া সঠিক APK-টি আপলোড করা
       - name: Upload Compiled APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sales-Book-Working-APK
+          name: Sales-Book-App-APK
           path: "**/build/outputs/apk/debug/app-debug.apk"
           if-no-files-found: error
