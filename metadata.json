@@ -1,0 +1,6 @@
+{
+  "name": "Sales Book",
+  "description": "একটি ডিজিটাল বেচাকেনার হিসাব খাতা অ্যাপ - Sales & Inventory Ledger Book",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
