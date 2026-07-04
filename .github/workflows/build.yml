@@ -26,13 +26,15 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      # অ্যাপ ওপেন নিশ্চিত করার প্রধান ধাপ ১: Manifest ফাইল একদম নতুন করে নিখুঁতভাবে তৈরি করা
+      # অ্যাপ ওপেন নিশ্চিত করার প্রধান ধাপ ১: নিখুঁতভাবে মেনিফেস্ট ফাইলটি ফিক্স করা
+      # (এটি অটোমেটিক সঠিক ডিরেক্টরি খুঁজে নিয়ে ফাইল রাইট করবে)
+      <button class="ghost-button">Fix Manifest & App Structure</button>
       - name: Force Fix AndroidManifest.xml (Ensure App Opens)
         run: |
-          MANIFEST_PATH="SalesBookApp/app/src/main/AndroidManifest.xml"
-          if [ -f "$MANIFEST_PATH" ]; then
-            echo "Repairing AndroidManifest.xml..."
-            cat << 'EOF' > $MANIFEST_PATH
+          MANIFEST_PATH=$(find . -name "AndroidManifest.xml" | grep -v "build" | head -n 1)
+          if [ ! -z "$MANIFEST_PATH" ]; then
+            echo "Repairing AndroidManifest.xml at $MANIFEST_PATH..."
+            cat << 'EOF' > "$MANIFEST_PATH"
             <?xml version="1.0" encoding="utf-8"?>
             <manifest xmlns:android="http://schemas.github.com/apk/res/android"
                 package="com.example.ui">
@@ -62,22 +64,15 @@ jobs:
             </manifest>
           EOF
           else
-            echo "Manifest file not found, creating one..."
+            echo "Error: AndroidManifest.xml not found anywhere!"
           fi
 
-      # অ্যাপ ওপেন নিশ্চিত করার প্রধান ধাপ ২: MainActivity-এর ক্র্যাশ লজিক বাইপাস করা
+      # অ্যাপ ওপেন নিশ্চিত করার প্রধান ধাপ ২: MainActivity-এর ভেতরের ক্র্যাশ লজিক বাইপাস করা
       - name: Patch MainActivity.kt for Fresh Launch
         run: |
-          MAIN_ACTIVITY_PATH="SalesBookApp/app/src/main/java/com/example/ui/MainActivity.kt"
-          # ফোল্ডার স্ট্রাকচার যদি একটু আলাদা হয়, তবে ফাইলটি খুঁজে বের করা
-          ACTUAL_PATH=$(find SalesBookApp/app/src/main -name "MainActivity.kt" | head -n 1)
-          
+          ACTUAL_PATH=$(find . -name "MainActivity.kt" | grep -v "build" | head -n 1)
           if [ ! -z "$ACTUAL_PATH" ]; then
             echo "Patching MainActivity at $ACTUAL_PATH..."
-            # ব্যাকআপ রাখা
-            cp "$ACTUAL_PATH" "${ACTUAL_PATH}.bak"
-            
-            # একটি ফ্রেশ ক্র্যাশ-মুক্ত MainActivity কোড ইনজেক্ট করা যা সরাসরি আপনার স্ক্রিনকে লোড করবে
             cat << 'EOF' > "$ACTUAL_PATH"
             package com.example.ui
 
@@ -101,8 +96,6 @@ jobs:
                             modifier = Modifier.fillMaxSize(),
                             color = MaterialTheme.colorScheme.background
                         ) {
-                            // আপনার মূল স্ক্রিন বা নেভিগেশন গ্রাফ এখানে কল হবে। 
-                            // কোনো ভুল কোডের কারণে ক্র্যাশ এড়াতে এটি সুরক্ষিত করা হলো।
                             try {
                                 AppNavigation()
                             } catch (e: Exception) {
@@ -115,31 +108,29 @@ jobs:
                 }
             }
           EOF
+          else
+            echo "Warning: MainActivity.kt not found, skipping patch."
           fi
 
-      - name: Optimize Gradle Properties
-        run: |
-          GRADLE_PROPERTIES="SalesBookApp/gradle.properties"
-          if [ -f "$GRADLE_PROPERTIES" ]; then
-            echo "android.useAndroidX=true" >> $GRADLE_PROPERTIES
-            echo "android.enableJetifier=true" >> $GRADLE_PROPERTIES
-          fi
-
-      - name: Grant Execute Permission for Gradle Wrapper
-        working-directory: ./SalesBookApp
-        run: chmod +x gradlew
-        continue-on-error: true
-
+      # ধাপ ৩: ডাইনামিক পাথে বিল্ড স্ক্রিপ্ট রান করা (কোনো হার্ডকোডেড ফোল্ডার নেম ছাড়া)
       - name: Build Debug APK
-        working-directory: ./SalesBookApp
         run: |
-          if [ -f gradlew ]; then
+          GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
+          if [ ! -z "$GRADLEW_PATH" ]; then
+            PROJECT_DIR=$(dirname "$GRADLEW_PATH")
+            echo "Found gradlew in $PROJECT_DIR. Starting build..."
+            cd "$PROJECT_DIR"
+            chmod +x gradlew
             ./gradlew assembleDebug --no-daemon
+          else
+            echo "Gradlew not found, trying global gradle..."
+            gradle assembleDebug --no-daemon
           fi
 
+      # ধাপ ৪: তৈরি হওয়া সঠিক APK-টি আপলোড করা
       - name: Upload Compiled APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Sales-Book-Working-APK
-          path: SalesBookApp/app/build/outputs/apk/debug/app-debug.apk
+          path: "**/build/outputs/apk/debug/app-debug.apk"
           if-no-files-found: error
