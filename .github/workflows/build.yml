@@ -27,8 +27,6 @@ jobs:
           cache: 'gradle'
 
       # অ্যাপ ওপেন নিশ্চিত করার প্রধান ধাপ ১: নিখুঁতভাবে মেনিফেস্ট ফাইলটি ফিক্স করা
-      # (এটি অটোমেটিক সঠিক ডিরেক্টরি খুঁজে নিয়ে ফাইল রাইট করবে)
-      <button class="ghost-button">Fix Manifest & App Structure</button>
       - name: Force Fix AndroidManifest.xml (Ensure App Opens)
         run: |
           MANIFEST_PATH=$(find . -name "AndroidManifest.xml" | grep -v "build" | head -n 1)
@@ -112,7 +110,7 @@ jobs:
             echo "Warning: MainActivity.kt not found, skipping patch."
           fi
 
-      # ধাপ ৩: ডাইনামিক পাথে বিল্ড স্ক্রিপ্ট রান করা (কোনো হার্ডকোডেড ফোল্ডার নেম ছাড়া)
+      # ধাপ ৩: ডাইনামিক পাথে বিল্ড স্ক্রিপ্ট রান করা
       - name: Build Debug APK
         run: |
           GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
@@ -127,7 +125,7 @@ jobs:
             gradle assembleDebug --no-daemon
           fi
 
-      # ধাপ ৪: তৈরি হওয়া সঠিক APK-টি আপলোড করা
+      # াব ৪: তৈরি হওয়া সঠিক APK-টি আপলোড করা
       - name: Upload Compiled APK Artifact
         uses: actions/upload-artifact@v4
         with:
