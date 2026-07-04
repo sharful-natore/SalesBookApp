@@ -4,6 +4,8 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -48,6 +50,7 @@ fun NewSaleScreen(viewModel: SalesBookViewModel) {
     var productSearchQuery by remember { mutableStateOf("") }
     var showCustomerSelector by remember { mutableStateOf(false) }
     var showReviewDialog by remember { mutableStateOf(false) }
+    var reviewProductSearchQuery by remember { mutableStateOf("") }
 
     val filteredProducts = remember(productsList, productSearchQuery) {
         if (productSearchQuery.trim().isEmpty()) {
@@ -491,7 +494,11 @@ fun NewSaleScreen(viewModel: SalesBookViewModel) {
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 4.dp)
                 ) {
                     // Customer info
                     Text(
@@ -507,7 +514,7 @@ fun NewSaleScreen(viewModel: SalesBookViewModel) {
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // List of items
+                    // List of items header
                     Text(
                         text = loc(isEnglish, "নির্বাচিত পণ্যসমূহ:", "Selected Products:"),
                         fontWeight = FontWeight.Bold,
@@ -515,26 +522,183 @@ fun NewSaleScreen(viewModel: SalesBookViewModel) {
                         color = MaterialTheme.colorScheme.primary
                     )
 
+                    // Cart items list with editing controls
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        cartItems.forEach { item ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                        if (cartItems.isEmpty()) {
+                            Text(
+                                text = loc(isEnglish, "কার্ট খালি! নিচে পণ্য যোগ করুন।", "Cart is empty! Add products below."),
+                                fontSize = 13.sp,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        } else {
+                            cartItems.forEach { item ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), shape = RoundedCornerShape(8.dp))
+                                        .padding(8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.product.name,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "৳${item.product.sellingPrice} x ${item.quantity} = ৳${item.product.sellingPrice * item.quantity}",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        // Decrease button
+                                        IconButton(
+                                            onClick = { viewModel.updateCartQuantity(item.product, item.quantity - 1) },
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Remove,
+                                                contentDescription = "Decrease",
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                        
+                                        Text(
+                                            text = item.quantity.toString(),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(horizontal = 2.dp)
+                                        )
+                                        
+                                        // Increase button
+                                        IconButton(
+                                            onClick = { viewModel.updateCartQuantity(item.product, item.quantity + 1) },
+                                            enabled = item.quantity < item.product.stock,
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .background(
+                                                    if (item.quantity < item.product.stock)
+                                                        MaterialTheme.colorScheme.primaryContainer
+                                                    else
+                                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                                    CircleShape
+                                                )
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = "Increase",
+                                                tint = if (item.quantity < item.product.stock)
+                                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                                else
+                                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                        
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        
+                                        // Remove button
+                                        IconButton(
+                                            onClick = { viewModel.removeFromCart(item.product) },
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .background(MaterialTheme.colorScheme.errorContainer, CircleShape)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Remove",
+                                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Section to add new products from review screen
+                    Text(
+                        text = loc(isEnglish, "+ নতুন পণ্য যোগ করুন", "+ Add New Product"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = reviewProductSearchQuery,
+                        onValueChange = { reviewProductSearchQuery = it },
+                        placeholder = { Text(loc(isEnglish, "পণ্যের নাম লিখে সার্চ করুন...", "Search product name..."), fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+
+                    val matchingProducts = remember(productsList, reviewProductSearchQuery) {
+                        if (reviewProductSearchQuery.trim().isEmpty()) {
+                            emptyList()
+                        } else {
+                            productsList.filter {
+                                it.stock > 0 && it.name.contains(reviewProductSearchQuery, ignoreCase = true)
+                            }
+                        }
+                    }
+
+                    if (matchingProducts.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 120.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState())
                             ) {
-                                Text(
-                                    text = "${item.product.name} x ${item.quantity}",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "৳${item.product.sellingPrice * item.quantity}",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                matchingProducts.forEach { prod ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                viewModel.addToCart(prod)
+                                                reviewProductSearchQuery = "" // clear search to hide results
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(prod.name, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text("${loc(isEnglish, "স্টক: ", "Stock: ")}${prod.stock} | ৳${prod.sellingPrice}", fontSize = 10.sp, color = Color.Gray)
+                                        }
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "Add",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                }
                             }
                         }
                     }
@@ -585,7 +749,8 @@ fun NewSaleScreen(viewModel: SalesBookViewModel) {
                                 Toast.makeText(context, error, Toast.LENGTH_LONG).show()
                             }
                         )
-                    }
+                    },
+                    enabled = cartItems.isNotEmpty()
                 ) {
                     Text(loc(isEnglish, "কনফার্ম করুন", "Confirm Order"))
                 }

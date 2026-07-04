@@ -1,11 +1,20 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
+import java.io.File
+import java.io.FileOutputStream
+import androidx.core.content.FileProvider
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,7 +43,15 @@ import com.example.data.model.SaleItem
 import com.example.viewmodel.SalesBookViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Calendar
 import java.util.Locale
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+
+enum class LedgerDateFilter {
+    ALL, TODAY, CUSTOM_MONTH, CUSTOM_DATE
+}
 
 @Composable
 fun TransactionsScreen(viewModel: SalesBookViewModel) {
@@ -42,6 +59,7 @@ fun TransactionsScreen(viewModel: SalesBookViewModel) {
     val salesList by viewModel.sales.collectAsStateWithLifecycle()
     val saleItemsList by viewModel.allSaleItems.collectAsStateWithLifecycle()
     val isEnglish by viewModel.isEnglish.collectAsStateWithLifecycle()
+    val shopProfile by viewModel.shopProfile.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
     var saleToDelete by remember { mutableStateOf<Sale?>(null) }
@@ -50,7 +68,14 @@ fun TransactionsScreen(viewModel: SalesBookViewModel) {
     var expandedSaleId by remember { mutableStateOf<Long?>(null) }
     var showOnlyDues by remember { mutableStateOf(false) }
 
-    val filteredSales = remember(salesList, searchQuery, showOnlyDues) {
+    // Date filters
+    var dateFilter by remember { mutableStateOf(LedgerDateFilter.ALL) }
+    var selectedDate by remember { mutableStateOf<Date?>(null) }
+    var selectedMonthIndex by remember { mutableStateOf(Calendar.getInstance().get(Calendar.MONTH)) } // default to current month
+    var showMonthPickerDialog by remember { mutableStateOf(false) }
+
+    val now = Calendar.getInstance()
+    val filteredSales = remember(salesList, searchQuery, showOnlyDues, dateFilter, selectedDate, selectedMonthIndex) {
         val baseList = if (searchQuery.trim().isEmpty()) {
             salesList
         } else {
@@ -58,10 +83,53 @@ fun TransactionsScreen(viewModel: SalesBookViewModel) {
                 it.customerName.contains(searchQuery, ignoreCase = true)
             }
         }
+        
+        val dateFiltered = baseList.filter { sale ->
+            val saleCal = Calendar.getInstance().apply { timeInMillis = sale.timestamp }
+            when (dateFilter) {
+                LedgerDateFilter.ALL -> true
+                LedgerDateFilter.TODAY -> {
+                    saleCal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+                    saleCal.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR)
+                }
+                LedgerDateFilter.CUSTOM_MONTH -> {
+                    saleCal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+                    saleCal.get(Calendar.MONTH) == selectedMonthIndex
+                }
+                LedgerDateFilter.CUSTOM_DATE -> {
+                    if (selectedDate == null) {
+                        true
+                    } else {
+                        val selCal = Calendar.getInstance().apply { time = selectedDate!! }
+                        saleCal.get(Calendar.YEAR) == selCal.get(Calendar.YEAR) &&
+                        saleCal.get(Calendar.DAY_OF_YEAR) == selCal.get(Calendar.DAY_OF_YEAR)
+                    }
+                }
+            }
+        }
+
         if (showOnlyDues) {
-            baseList.filter { it.dueAmount > 0 }
+            dateFiltered.filter { it.dueAmount > 0 }
         } else {
-            baseList
+            dateFiltered
+        }
+    }
+
+    val createPdfLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            generatePdfReport(
+                context = context,
+                salesList = filteredSales,
+                saleItemsList = saleItemsList,
+                isEnglish = isEnglish,
+                shopProfile = shopProfile,
+                dateFilter = dateFilter,
+                selectedDate = selectedDate,
+                selectedMonthIndex = selectedMonthIndex,
+                targetUri = uri
+            )
         }
     }
 
@@ -71,23 +139,58 @@ fun TransactionsScreen(viewModel: SalesBookViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Title & PDF Export Row
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(
-                imageVector = Icons.Default.HistoryEdu,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-            Text(
-                text = loc(isEnglish, "বেচাকেনার খাতা ও লেজার", "Sales Ledger & Records"),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.HistoryEdu,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = loc(isEnglish, "বেচাকেনার খাতা ও লেজার", "Sales Ledger & Records"),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
+            // Export to PDF Button
+            OutlinedButton(
+                onClick = {
+                    if (filteredSales.isEmpty()) {
+                        val emptyMsg = loc(isEnglish, "এক্সপোর্ট করার মতো কোনো লেনদেন নেই!", "No transactions to export under current filter!")
+                        Toast.makeText(context, emptyMsg, Toast.LENGTH_SHORT).show()
+                    } else {
+                        val sdfName = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+                        val timeStamp = sdfName.format(Date())
+                        createPdfLauncher.launch("Ledger_Report_$timeStamp.pdf")
+                    }
+                },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                modifier = Modifier.height(34.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PictureAsPdf,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = loc(isEnglish, "পিডিএফ", "PDF"),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
         // Search Ledger
@@ -111,6 +214,80 @@ fun TransactionsScreen(viewModel: SalesBookViewModel) {
             textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
             shape = RoundedCornerShape(8.dp)
         )
+
+        // Date Filters Row (Chips)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // ALL Chip
+            FilterChip(
+                selected = dateFilter == LedgerDateFilter.ALL,
+                onClick = { dateFilter = LedgerDateFilter.ALL },
+                label = { Text(loc(isEnglish, "সব", "All"), fontSize = 12.sp) }
+            )
+            // TODAY Chip
+            FilterChip(
+                selected = dateFilter == LedgerDateFilter.TODAY,
+                onClick = { dateFilter = LedgerDateFilter.TODAY },
+                label = { Text(loc(isEnglish, "আজ", "Today"), fontSize = 12.sp) }
+            )
+            // MONTH Chip
+            FilterChip(
+                selected = dateFilter == LedgerDateFilter.CUSTOM_MONTH,
+                onClick = { showMonthPickerDialog = true },
+                label = {
+                    val monthsBn = listOf("জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর")
+                    val monthsEn = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+                    val monthStr = if (isEnglish) monthsEn[selectedMonthIndex] else monthsBn[selectedMonthIndex]
+                    Text(
+                        text = if (dateFilter == LedgerDateFilter.CUSTOM_MONTH) {
+                            "${loc(isEnglish, "মাস", "Month")}: $monthStr"
+                        } else {
+                            loc(isEnglish, "নির্দিষ্ট মাস", "Select Month")
+                        },
+                        fontSize = 12.sp
+                    )
+                }
+            )
+            // DATE Chip
+            FilterChip(
+                selected = dateFilter == LedgerDateFilter.CUSTOM_DATE,
+                onClick = {
+                    val calendar = Calendar.getInstance()
+                    val datePickerDialog = android.app.DatePickerDialog(
+                        context,
+                        { _, year, month, dayOfMonth ->
+                            val selectedCal = Calendar.getInstance().apply {
+                                set(Calendar.YEAR, year)
+                                set(Calendar.MONTH, month)
+                                set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                            }
+                            selectedDate = selectedCal.time
+                            dateFilter = LedgerDateFilter.CUSTOM_DATE
+                        },
+                        calendar.get(Calendar.YEAR),
+                        calendar.get(Calendar.MONTH),
+                        calendar.get(Calendar.DAY_OF_MONTH)
+                    )
+                    datePickerDialog.show()
+                },
+                label = {
+                    val dateStr = selectedDate?.let { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(it) }
+                    Text(
+                        text = if (dateFilter == LedgerDateFilter.CUSTOM_DATE && dateStr != null) {
+                            dateStr
+                        } else {
+                            loc(isEnglish, "নির্দিষ্ট তারিখ", "Select Date")
+                        },
+                        fontSize = 12.sp
+                    )
+                }
+            )
+        }
 
         // Totals summary cards
         Row(
@@ -356,6 +533,64 @@ fun TransactionsScreen(viewModel: SalesBookViewModel) {
             }
         )
     }
+
+    // Month picker Dialog
+    if (showMonthPickerDialog) {
+        val monthsBn = listOf("জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর")
+        val monthsEn = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+        
+        AlertDialog(
+            onDismissRequest = { showMonthPickerDialog = false },
+            title = {
+                Text(
+                    text = loc(isEnglish, "মাস নির্বাচন করুন", "Select Month"),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(260.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    for (i in 0..11) {
+                        TextButton(
+                            onClick = {
+                                selectedMonthIndex = i
+                                dateFilter = LedgerDateFilter.CUSTOM_MONTH
+                                showMonthPickerDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (isEnglish) monthsEn[i] else monthsBn[i],
+                                fontSize = 14.sp,
+                                color = if (selectedMonthIndex == i && dateFilter == LedgerDateFilter.CUSTOM_MONTH) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                                fontWeight = if (selectedMonthIndex == i && dateFilter == LedgerDateFilter.CUSTOM_MONTH) {
+                                    FontWeight.Bold
+                                } else {
+                                    FontWeight.Normal
+                                }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showMonthPickerDialog = false }) {
+                    Text(loc(isEnglish, "বন্ধ করুন", "Close"))
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -551,5 +786,213 @@ private fun formatTimestamp(timestamp: Long): String {
         sdf.format(date)
     } catch (e: Exception) {
         ""
+    }
+}
+
+fun generatePdfReport(
+    context: android.content.Context,
+    salesList: List<Sale>,
+    saleItemsList: List<SaleItem>,
+    isEnglish: Boolean,
+    shopProfile: com.example.data.model.ShopProfile,
+    dateFilter: LedgerDateFilter,
+    selectedDate: Date?,
+    selectedMonthIndex: Int,
+    targetUri: android.net.Uri
+) {
+    try {
+        val pdfDocument = PdfDocument()
+        
+        // Setup Paint
+        val paint = Paint()
+        val titlePaint = Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 18f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val subTitlePaint = Paint().apply {
+            color = android.graphics.Color.DKGRAY
+            textSize = 12f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val infoPaint = Paint().apply {
+            color = android.graphics.Color.DKGRAY
+            textSize = 10f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        }
+        val headerPaint = Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 10f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val textPaint = Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 9f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        }
+        val boldTextPaint = Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 9f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val linePaint = Paint().apply {
+            color = android.graphics.Color.LTGRAY
+            strokeWidth = 1f
+        }
+        val thickLinePaint = Paint().apply {
+            color = android.graphics.Color.BLACK
+            strokeWidth = 1.5f
+        }
+
+        var pageNumber = 1
+        var pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNumber).create()
+        var page = pdfDocument.startPage(pageInfo)
+        var canvas = page.canvas
+
+        // Header Function
+        fun drawHeader(canvas: android.graphics.Canvas) {
+            // Draw Shop Name
+            val shopName = shopProfile.name.ifBlank { if (isEnglish) "My Shop" else "আমার দোকান" }
+            canvas.drawText(shopName, 40f, 50f, titlePaint)
+            
+            // Draw Shop Info
+            var yPos = 70f
+            if (shopProfile.phone.isNotBlank()) {
+                canvas.drawText("${if (isEnglish) "Phone: " else "ফোন: "}${shopProfile.phone}", 40f, yPos, infoPaint)
+                yPos += 16f
+            }
+            if (shopProfile.address.isNotBlank()) {
+                canvas.drawText("${if (isEnglish) "Address: " else "ঠিকানা: "}${shopProfile.address}", 40f, yPos, infoPaint)
+                yPos += 16f
+            }
+            
+            // Draw Report Title
+            val reportTitle = if (isEnglish) "Sales Ledger Report" else "বেচাকেনার খাতা ও লেজার রিপোর্ট"
+            canvas.drawText(reportTitle, 40f, yPos, subTitlePaint)
+            yPos += 18f
+            
+            // Draw Filters & Metadata
+            val sdf = SimpleDateFormat("dd-MM-yyyy hh:mm a", Locale.getDefault())
+            val dateStr = sdf.format(Date())
+            
+            val filterText = when (dateFilter) {
+                LedgerDateFilter.ALL -> if (isEnglish) "Filter: All Transactions" else "ফিল্টার: সকল লেনদেন"
+                LedgerDateFilter.TODAY -> if (isEnglish) "Filter: Today" else "ফিল্টার: আজকের লেনদেন"
+                LedgerDateFilter.CUSTOM_MONTH -> {
+                    val monthsBn = listOf("জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর")
+                    val monthsEn = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+                    val m = if (isEnglish) monthsEn[selectedMonthIndex] else monthsBn[selectedMonthIndex]
+                    "${if (isEnglish) "Filter Month: " else "ফিল্টার মাস: "}$m"
+                }
+                LedgerDateFilter.CUSTOM_DATE -> {
+                    val dStr = selectedDate?.let { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(it) } ?: ""
+                    "${if (isEnglish) "Filter Date: " else "ফিল্টার তারিখ: "}$dStr"
+                }
+            }
+            
+            canvas.drawText("$filterText | ${if (isEnglish) "Exported: " else "রপ্তানি করা হয়েছে: "}$dateStr", 40f, yPos, infoPaint)
+            yPos += 10f
+            
+            // Draw divider line
+            canvas.drawLine(40f, yPos, 555f, yPos, thickLinePaint)
+        }
+
+        // Draw header on first page
+        drawHeader(canvas)
+        var currentY = 160f
+
+        // Draw Table Header
+        fun drawTableHeader(canvas: android.graphics.Canvas, y: Float) {
+            canvas.drawText(if (isEnglish) "ID" else "আইডি", 40f, y, headerPaint)
+            canvas.drawText(if (isEnglish) "Customer Name" else "ক্রেতার নাম", 90f, y, headerPaint)
+            canvas.drawText(if (isEnglish) "Date" else "তারিখ", 260f, y, headerPaint)
+            canvas.drawText(if (isEnglish) "Total" else "মোট টাকা", 360f, y, headerPaint)
+            canvas.drawText(if (isEnglish) "Paid" else "পরিশোধ", 430f, y, headerPaint)
+            canvas.drawText(if (isEnglish) "Due" else "বাকি", 500f, y, headerPaint)
+            
+            canvas.drawLine(40f, y + 6f, 555f, y + 6f, linePaint)
+        }
+
+        drawTableHeader(canvas, currentY)
+        currentY += 20f
+
+        val sdfDate = SimpleDateFormat("dd-MM-yyyy hh:mm a", Locale.getDefault())
+
+        for (sale in salesList) {
+            // Check if we need to start a new page
+            if (currentY > 780f) {
+                pdfDocument.finishPage(page)
+                pageNumber++
+                pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNumber).create()
+                page = pdfDocument.startPage(pageInfo)
+                canvas = page.canvas
+                
+                // Draw a simple header on secondary pages
+                canvas.drawText(shopProfile.name.ifBlank { if (isEnglish) "My Shop" else "আমার দোকান" }, 40f, 40f, infoPaint)
+                canvas.drawText("${if (isEnglish) "Page " else "পৃষ্ঠা "}$pageNumber", 500f, 40f, infoPaint)
+                canvas.drawLine(40f, 48f, 555f, 48f, linePaint)
+                
+                currentY = 70f
+                drawTableHeader(canvas, currentY)
+                currentY += 20f
+            }
+
+            val saleDate = sdfDate.format(Date(sale.timestamp))
+            canvas.drawText("#${sale.id}", 40f, currentY, textPaint)
+            
+            val custName = sale.customerName.ifBlank { if (isEnglish) "Walk-in Customer" else "সাধারণ ক্রেতা" }
+            val truncatedName = if (custName.length > 25) custName.take(23) + ".." else custName
+            canvas.drawText(truncatedName, 90f, currentY, textPaint)
+            
+            canvas.drawText(saleDate, 260f, currentY, textPaint)
+            canvas.drawText("৳${String.format("%.1f", sale.totalAmount)}", 360f, currentY, textPaint)
+            canvas.drawText("৳${String.format("%.1f", sale.paidAmount)}", 430f, currentY, textPaint)
+            canvas.drawText("৳${String.format("%.1f", sale.dueAmount)}", 500f, currentY, textPaint)
+
+            canvas.drawLine(40f, currentY + 4f, 555f, currentY + 4f, linePaint)
+            currentY += 18f
+        }
+
+        // Draw Totals Row
+        if (currentY > 750f) {
+            pdfDocument.finishPage(page)
+            pageNumber++
+            pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNumber).create()
+            page = pdfDocument.startPage(pageInfo)
+            canvas = page.canvas
+            
+            canvas.drawText(shopProfile.name.ifBlank { if (isEnglish) "My Shop" else "আমার দোকান" }, 40f, 40f, infoPaint)
+            canvas.drawText("${if (isEnglish) "Page " else "পৃষ্ঠা "}$pageNumber", 500f, 40f, infoPaint)
+            canvas.drawLine(40f, 48f, 555f, 48f, linePaint)
+            currentY = 70f
+        }
+
+        currentY += 10f
+        canvas.drawLine(40f, currentY, 555f, currentY, thickLinePaint)
+        currentY += 15f
+
+        val totalSales = salesList.sumOf { it.totalAmount }
+        val totalPaid = salesList.sumOf { it.paidAmount }
+        val totalDue = salesList.sumOf { it.dueAmount }
+
+        canvas.drawText(if (isEnglish) "GRAND TOTALS:" else "সর্বমোট হিসাব:", 40f, currentY, boldTextPaint)
+        canvas.drawText("৳${String.format("%.1f", totalSales)}", 360f, currentY, boldTextPaint)
+        canvas.drawText("৳${String.format("%.1f", totalPaid)}", 430f, currentY, boldTextPaint)
+        canvas.drawText("৳${String.format("%.1f", totalDue)}", 500f, currentY, boldTextPaint)
+
+        pdfDocument.finishPage(page)
+
+        // Write the PDF file to chosen storage Uri
+        context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
+            pdfDocument.writeTo(outputStream)
+        }
+        pdfDocument.close()
+
+        val successMsg = if (isEnglish) "PDF exported successfully to selected memory location!" else "পিডিএফ রিপোর্টটি সফলভাবে মেমরি লোকেশনে এক্সপোর্ট হয়েছে!"
+        Toast.makeText(context, successMsg, Toast.LENGTH_LONG).show()
+
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "PDF Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
     }
 }

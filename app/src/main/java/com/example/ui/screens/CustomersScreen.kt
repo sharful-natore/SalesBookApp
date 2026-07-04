@@ -1,7 +1,16 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,7 +22,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -21,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.rememberAsyncImagePainter
 import com.example.ui.components.GlassCard
 import com.example.ui.components.loc
 import com.example.data.model.Customer
@@ -39,6 +51,28 @@ fun CustomersScreen(viewModel: SalesBookViewModel) {
     var customerToDelete by remember { mutableStateOf<Customer?>(null) }
     var customerToCollectDue by remember { mutableStateOf<Customer?>(null) }
     var collectAmountInput by remember { mutableStateOf("") }
+    var selectedCustomerProfile by remember { mutableStateOf<Customer?>(null) }
+
+    val customerPhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            selectedCustomerProfile?.let { customer ->
+                val updatedCustomer = customer.copy(photoUri = uri.toString())
+                viewModel.updateCustomer(updatedCustomer) {
+                    selectedCustomerProfile = updatedCustomer
+                }
+            }
+        }
+    }
 
     val filteredCustomers = remember(customersList, searchQuery) {
         if (searchQuery.trim().isEmpty()) {
@@ -166,6 +200,9 @@ fun CustomersScreen(viewModel: SalesBookViewModel) {
                             onCollectDue = {
                                 customerToCollectDue = customer
                                 collectAmountInput = dueAmount.toString()
+                            },
+                            onShowProfile = {
+                                selectedCustomerProfile = customer
                             }
                         )
                     }
@@ -278,8 +315,27 @@ fun CustomersScreen(viewModel: SalesBookViewModel) {
             }
         )
     }
-}
 
+    // Customer Profile Dialog State Trigger
+    selectedCustomerProfile?.let { customer ->
+        val dueAmount = remember(salesList) {
+            salesList.filter { it.customerId == customer.id }.sumOf { it.dueAmount }
+        }
+        val totalPurchased = remember(salesList) {
+            salesList.filter { it.customerId == customer.id }.sumOf { it.totalAmount }
+        }
+        CustomerProfileDialog(
+            customer = customer,
+            dueAmount = dueAmount,
+            totalPurchased = totalPurchased,
+            isEnglish = isEnglish,
+            onDismiss = { selectedCustomerProfile = null },
+            onAddPhoto = {
+                customerPhotoPickerLauncher.launch(arrayOf("image/*"))
+            }
+        )
+    }
+}
 @Composable
 fun CustomerItemCard(
     customer: Customer,
@@ -287,7 +343,8 @@ fun CustomerItemCard(
     isEnglish: Boolean,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onCollectDue: () -> Unit
+    onCollectDue: () -> Unit,
+    onShowProfile: () -> Unit
 ) {
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
@@ -299,89 +356,126 @@ fun CustomerItemCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = customer.name,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Phone,
-                        contentDescription = "Phone",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.size(14.dp)
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onShowProfile() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Profile Photo or Placeholder Icon
+                if (customer.photoUri != null) {
+                    Image(
+                        painter = rememberAsyncImagePainter(model = Uri.parse(customer.photoUri)),
+                        contentDescription = "Thumbnail",
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                        contentScale = ContentScale.Crop
                     )
-                    Text(
-                        text = customer.phone,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = "Placeholder",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
-                if (customer.address.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(2.dp))
+
+                Column {
+                    Text(
+                        text = customer.name,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = "Address",
+                            imageVector = Icons.Default.Phone,
+                            contentDescription = "Phone",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
-                            text = customer.address,
+                            text = customer.phone,
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                }
-                
-                Spacer(modifier = Modifier.height(6.dp))
-                if (dueAmount > 0) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MoneyOff,
-                            contentDescription = "Dues",
-                            tint = Color(0xFFE57373),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = "${loc(isEnglish, "বাকি: ৳", "Dues: ৳")}${String.format("%.1f", dueAmount)}",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFE57373)
-                        )
+                    if (customer.address.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = "Address",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = customer.address,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                } else {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "No Dues",
-                            tint = Color(0xFF81C784),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = loc(isEnglish, "পরিশোধিত (No Dues)", "Paid (No Dues)"),
-                            fontSize = 13.sp,
-                            color = Color(0xFF81C784),
-                            fontWeight = FontWeight.Bold
-                        )
+                    
+                    Spacer(modifier = Modifier.height(6.dp))
+                    if (dueAmount > 0) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoneyOff,
+                                contentDescription = "Dues",
+                                tint = Color(0xFFE57373),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "${loc(isEnglish, "বাকি: ৳", "Dues: ৳")}${String.format("%.1f", dueAmount)}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFE57373)
+                            )
+                        }
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "No Dues",
+                                tint = Color(0xFF81C784),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = loc(isEnglish, "পরিশোধিত (No Dues)", "Paid (No Dues)"),
+                                fontSize = 13.sp,
+                                color = Color(0xFF81C784),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
+
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -501,6 +595,201 @@ fun CustomerFormDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(loc(isEnglish, "বাতিল", "Cancel"))
+            }
+        }
+    )
+}
+
+@Composable
+fun CustomerProfileDialog(
+    customer: Customer,
+    dueAmount: Double,
+    totalPurchased: Double,
+    isEnglish: Boolean,
+    onDismiss: () -> Unit,
+    onAddPhoto: () -> Unit
+) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = loc(isEnglish, "ক্রেতা প্রোফাইল", "Customer Profile"),
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
+                // Photo Section with Edit Overlay
+                Box(
+                    contentAlignment = Alignment.BottomEnd
+                ) {
+                    if (customer.photoUri != null) {
+                        Image(
+                            painter = rememberAsyncImagePainter(model = Uri.parse(customer.photoUri)),
+                            contentDescription = "Profile Photo",
+                            modifier = Modifier
+                                .size(90.dp)
+                                .clip(CircleShape)
+                                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(90.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "Profile Placeholder",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(48.dp)
+                            )
+                        }
+                    }
+
+                    // Small photo trigger button
+                    IconButton(
+                        onClick = onAddPhoto,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.secondaryContainer)
+                            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoCamera,
+                            contentDescription = "Change Photo",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                // Name & Metadata
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = customer.name,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = customer.phone,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (customer.address.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = customer.address,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+
+                // Financial Cards
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Total Sales
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = loc(isEnglish, "মোট বিক্রয়", "Total Bought"),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "৳${String.format("%.1f", totalPurchased)}",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                    // Total Dues
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(
+                                if (dueAmount > 0) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                                else MaterialTheme.colorScheme.surfaceVariant,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .padding(10.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = loc(isEnglish, "মোট বাকি", "Outstanding Dues"),
+                                fontSize = 11.sp,
+                                color = if (dueAmount > 0) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "৳${String.format("%.1f", dueAmount)}",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (dueAmount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                // Call Action Button
+                Button(
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${customer.phone}"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Error making call: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Call,
+                        contentDescription = "Call Customer",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = loc(isEnglish, "কল করুন", "Call Customer"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(loc(isEnglish, "বন্ধ করুন", "Close"))
             }
         }
     )

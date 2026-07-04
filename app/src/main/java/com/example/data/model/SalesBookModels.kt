@@ -21,7 +21,8 @@ data class Customer(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val phone: String,         // মোবাইল নম্বর
-    val address: String        // ঠিকানা
+    val address: String,       // ঠিকানা
+    val photoUri: String? = null // কাস্টমারের ছবি (পাস করা URI)
 )
 
 @JsonClass(generateAdapter = true)
@@ -53,7 +54,7 @@ data class SaleItem(
 @Entity(tableName = "shop_profile")
 data class ShopProfile(
     @PrimaryKey val id: Int = 1,
-    val name: String = "আমার ডিজিটাল ব্যবসা খাতা",
+    val name: String = "বিসমিল্লাহ এন্টারপ্রাইজ",
     val phone: String = "01700000000",
     val address: String = "ঢাকা, বাংলাদেশ",
     val logoUri: String? = null

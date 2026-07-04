@@ -173,15 +173,22 @@ class SalesBookViewModel(application: Application) : AndroidViewModel(applicatio
         val total = getTotalCartAmount()
         val paid = amountStr.toDoubleOrNull() ?: 0.0
         
-        when {
-            paid >= total && total > 0 -> {
+        if (paymentType.value != "Partial Paid") {
+            when {
+                paid >= total && total > 0 -> {
+                    paymentType.value = "Full Cash"
+                }
+                paid <= 0 -> {
+                    paymentType.value = "Full Due"
+                }
+                else -> {
+                    paymentType.value = "Partial Paid"
+                }
+            }
+        } else {
+            // In partial paid mode, only transition to Full Cash if they paid everything
+            if (paid >= total && total > 0) {
                 paymentType.value = "Full Cash"
-            }
-            paid <= 0 -> {
-                paymentType.value = "Full Due"
-            }
-            else -> {
-                paymentType.value = "Partial Paid"
             }
         }
     }

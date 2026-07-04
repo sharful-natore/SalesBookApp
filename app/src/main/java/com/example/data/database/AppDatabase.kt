@@ -9,7 +9,7 @@ import com.example.data.model.*
 
 @Database(
     entities = [Product::class, Customer::class, Sale::class, SaleItem::class, ShopProfile::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

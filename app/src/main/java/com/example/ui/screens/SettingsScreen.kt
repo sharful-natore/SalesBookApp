@@ -77,6 +77,26 @@ fun SettingsScreen(viewModel: SalesBookViewModel) {
         }
     }
 
+    // Launcher to save database backup to selected location
+    val backupDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.exportBackup { json ->
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        outputStream.write(json.toByteArray())
+                    }
+                    val msg = loc(isEnglish, "ব্যাকআপ সফলভাবে মেমরিতে সেভ হয়েছে!", "Backup saved successfully to selected location!")
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
     var pasteInput by remember { mutableStateOf("") }
     var showExportDialog by remember { mutableStateOf(false) }
     var exportedJson by remember { mutableStateOf("") }
@@ -360,19 +380,8 @@ fun SettingsScreen(viewModel: SalesBookViewModel) {
                     // Export File Button
                     Button(
                         onClick = {
-                            viewModel.exportBackup { json ->
-                                val savedUri = saveBackupToPublicDownloads(context, json)
-                                if (savedUri != null) {
-                                    val msg = loc(isEnglish, "ব্যাকআপ ফাইল ডাউনলোড ফোল্ডারে সফলভাবে সেভ হয়েছে!", "Backup file successfully saved into Downloads directory!")
-                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                                } else {
-                                    val msg = loc(isEnglish, "ফাইল সেভ করতে সমস্যা হয়েছে, অনুগ্রহ করে ম্যানুয়াল ব্যাকআপ নিন!", "Failed saving file, falling back to manual clipboard backup code!")
-                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                    // Fallback to manual clipboard copy
-                                    exportedJson = json
-                                    showExportDialog = true
-                                }
-                            }
+                            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                            backupDocumentLauncher.launch("SalesBook_Backup_$timeStamp.json")
                         },
                         modifier = Modifier.weight(1f).height(40.dp).testTag("backup_export_btn"),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
