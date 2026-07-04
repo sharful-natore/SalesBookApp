@@ -1,9 +1,16 @@
 package com.example.ui.screens
 
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -15,16 +22,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.rememberAsyncImagePainter
 import com.example.data.model.Product
 import com.example.viewmodel.AppScreen
 import com.example.viewmodel.ReportFilter
 import com.example.viewmodel.SalesBookViewModel
+import com.example.ui.components.GlassCard
+import com.example.ui.components.loc
 
 @Composable
 fun DashboardScreen(viewModel: SalesBookViewModel) {
@@ -33,6 +45,8 @@ fun DashboardScreen(viewModel: SalesBookViewModel) {
     val saleItemsList by viewModel.allSaleItems.collectAsStateWithLifecycle()
     val productsList by viewModel.products.collectAsStateWithLifecycle()
     val activeFilter by viewModel.reportFilter.collectAsStateWithLifecycle()
+    val customersList by viewModel.customers.collectAsStateWithLifecycle()
+    val isEnglish by viewModel.isEnglish.collectAsStateWithLifecycle()
 
     // Filter calculations
     val filteredSales = remember(salesList, activeFilter) {
@@ -51,117 +65,233 @@ fun DashboardScreen(viewModel: SalesBookViewModel) {
     val totalPaid = filteredSales.sumOf { it.paidAmount }
     val totalDue = filteredSales.sumOf { it.dueAmount }
     val netProfit = filteredItems.sumOf { (it.sellingPrice - it.purchasePrice) * it.quantity }
+    val totalProductsCount = productsList.size
+    val totalCustomersCount = customersList.size
 
     val lowStockProducts = remember(productsList) {
-        productsList.filter { it.stock <= 5 }
+        productsList.filter { product -> product.stock <= 5 }
     }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Business Profile Header Banner
         item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(
                         Brush.horizontalGradient(
                             colors = listOf(
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.secondary
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f)
                             )
                         )
                     )
-                    .padding(24.dp)
+                    .padding(16.dp)
             ) {
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Storefront,
-                            contentDescription = "Shop Icon",
-                            tint = Color.White,
-                            modifier = Modifier.size(36.dp)
-                        )
+                        if (!shopProfile.logoUri.isNullOrBlank()) {
+                            Image(
+                                painter = rememberAsyncImagePainter(model = shopProfile.logoUri),
+                                contentDescription = "Shop Custom Icon",
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .border(1.5.dp, Color.White, CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Storefront,
+                                contentDescription = "Shop Icon",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                         Text(
-                            text = shopProfile.name,
+                            text = shopProfile.name.ifBlank { loc(isEnglish, "আমার দোকান", "My Shop") },
                             color = Color.White,
-                            fontSize = 24.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 0.5.sp
+                            letterSpacing = 0.4.sp
                         )
                     }
-                    Spacer(modifier = Modifier.height(16.dp))
+                    
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Phone,
-                            contentDescription = "Phone Icon",
-                            tint = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = shopProfile.phone,
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Place,
-                            contentDescription = "Location Icon",
-                            tint = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = shopProfile.address,
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                        if (shopProfile.phone.isNotBlank()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Phone,
+                                    contentDescription = "Phone Icon",
+                                    tint = Color.White.copy(alpha = 0.9f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = shopProfile.phone,
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        
+                        if (shopProfile.address.isNotBlank()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Place,
+                                    contentDescription = "Location Icon",
+                                    tint = Color.White.copy(alpha = 0.9f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = shopProfile.address,
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // Date Filter Selection Row
+        // Date Filter Selection Card
         item {
-            Card(
+            GlassCard(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                shape = RoundedCornerShape(12.dp)
+                padding = 14.dp
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    ReportFilterButton(
-                        label = "আজ (Today)",
-                        isSelected = activeFilter == ReportFilter.Today,
-                        onClick = { viewModel.setReportFilter(ReportFilter.Today) },
-                        modifier = Modifier.weight(1f).testTag("filter_today")
-                    )
-                    ReportFilterButton(
-                        label = "এই মাস (Month)",
-                        isSelected = activeFilter == ReportFilter.CurrentMonth,
-                        onClick = { viewModel.setReportFilter(ReportFilter.CurrentMonth) },
-                        modifier = Modifier.weight(1f).testTag("filter_month")
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ReportFilterButton(
+                            label = loc(isEnglish, "আজ", "Today"),
+                            isSelected = activeFilter == ReportFilter.Today,
+                            onClick = { viewModel.setReportFilter(ReportFilter.Today) },
+                            modifier = Modifier.weight(1f).testTag("filter_today")
+                        )
+                        ReportFilterButton(
+                            label = loc(isEnglish, "এই মাস", "This Month"),
+                            isSelected = activeFilter == ReportFilter.CurrentMonth,
+                            onClick = { viewModel.setReportFilter(ReportFilter.CurrentMonth) },
+                            modifier = Modifier.weight(1f).testTag("filter_month")
+                        )
+                        ReportFilterButton(
+                            label = loc(isEnglish, "নির্দিষ্ট তারিখ", "Custom Range"),
+                            isSelected = activeFilter == ReportFilter.Custom,
+                            onClick = { viewModel.setReportFilter(ReportFilter.Custom) },
+                            modifier = Modifier.weight(1.2f).testTag("filter_custom")
+                        )
+                    }
+
+                    if (activeFilter == ReportFilter.Custom) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val context = LocalContext.current
+                            val customStart by viewModel.customStartDate.collectAsStateWithLifecycle()
+                            val customEnd by viewModel.customEndDate.collectAsStateWithLifecycle()
+
+                            Button(
+                                onClick = {
+                                    val calendar = Calendar.getInstance()
+                                    android.app.DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            val selectedCal = Calendar.getInstance().apply {
+                                                set(Calendar.YEAR, year)
+                                                set(Calendar.MONTH, month)
+                                                set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                                                set(Calendar.HOUR_OF_DAY, 0)
+                                                set(Calendar.MINUTE, 0)
+                                                set(Calendar.SECOND, 0)
+                                                set(Calendar.MILLISECOND, 0)
+                                            }
+                                            viewModel.setCustomStartDate(selectedCal.timeInMillis)
+                                        },
+                                        calendar.get(Calendar.YEAR),
+                                        calendar.get(Calendar.MONTH),
+                                        calendar.get(Calendar.DAY_OF_MONTH)
+                                    ).show()
+                                },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp)
+                            ) {
+                                val text = customStart?.let { formatShortDate(it) } ?: loc(isEnglish, "শুরুর তারিখ", "Start Date")
+                                Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    val calendar = Calendar.getInstance()
+                                    android.app.DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            val selectedCal = Calendar.getInstance().apply {
+                                                set(Calendar.YEAR, year)
+                                                set(Calendar.MONTH, month)
+                                                set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                                                set(Calendar.HOUR_OF_DAY, 23)
+                                                set(Calendar.MINUTE, 59)
+                                                set(Calendar.SECOND, 59)
+                                                set(Calendar.MILLISECOND, 999)
+                                            }
+                                            viewModel.setCustomEndDate(selectedCal.timeInMillis)
+                                        },
+                                        calendar.get(Calendar.YEAR),
+                                        calendar.get(Calendar.MONTH),
+                                        calendar.get(Calendar.DAY_OF_MONTH)
+                                    ).show()
+                                },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp)
+                            ) {
+                                val text = customEnd?.let { formatShortDate(it) } ?: loc(isEnglish, "শেষের তারিখ", "End Date")
+                                Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -170,66 +300,74 @@ fun DashboardScreen(viewModel: SalesBookViewModel) {
         item {
             val isDark by viewModel.isDarkMode.collectAsStateWithLifecycle()
 
-            val salesBgColor = MaterialTheme.colorScheme.primaryContainer
-            val salesTextColor = MaterialTheme.colorScheme.onPrimaryContainer
             val salesIconTint = MaterialTheme.colorScheme.primary
-
-            val paidBgColor = if (isDark) Color(0xFF0C2B18) else Color(0xFFE8F5E9)
-            val paidTextColor = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
             val paidIconTint = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
-
-            val dueBgColor = if (isDark) Color(0xFF3B0C11) else Color(0xFFFFEBEE)
-            val dueTextColor = if (isDark) Color(0xFFFFB4A7) else Color(0xFFC62828)
             val dueIconTint = if (isDark) Color(0xFFFFB4A7) else Color(0xFFC62828)
-
-            val profitBgColor = if (isDark) Color(0xFF0A2B30) else Color(0xFFE0F7FA)
-            val profitTextColor = if (isDark) Color(0xFF80DEEA) else Color(0xFF00838F)
             val profitIconTint = if (isDark) Color(0xFF80DEEA) else Color(0xFF00838F)
+            val productsIconTint = MaterialTheme.colorScheme.secondary
+            val customersIconTint = MaterialTheme.colorScheme.tertiary
 
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     KpiCard(
-                        title = "মোট বিক্রয় (Total Sales)",
+                        title = loc(isEnglish, "মোট বিক্রয়", "Total Sales"),
                         value = "৳${String.format("%.1f", totalSales)}",
                         icon = Icons.Default.TrendingUp,
-                        containerColor = salesBgColor,
-                        contentColor = salesTextColor,
                         iconTint = salesIconTint,
+                        onClick = { viewModel.navigateTo(AppScreen.Transactions) },
                         modifier = Modifier.weight(1f)
                     )
                     KpiCard(
-                        title = "মোট নগদ (Received)",
+                        title = loc(isEnglish, "মোট নগদ", "Total Received"),
                         value = "৳${String.format("%.1f", totalPaid)}",
                         icon = Icons.Default.Payments,
-                        containerColor = paidBgColor,
-                        contentColor = paidTextColor,
                         iconTint = paidIconTint,
+                        onClick = { viewModel.navigateTo(AppScreen.Transactions) },
                         modifier = Modifier.weight(1f)
                     )
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     KpiCard(
-                        title = "মোট বাকি (Total Due)",
+                        title = loc(isEnglish, "মোট বাকি", "Total Due"),
                         value = "৳${String.format("%.1f", totalDue)}",
                         icon = Icons.Default.HistoryEdu,
-                        containerColor = dueBgColor,
-                        contentColor = dueTextColor,
                         iconTint = dueIconTint,
+                        onClick = { viewModel.navigateTo(AppScreen.Customers) },
                         modifier = Modifier.weight(1f)
                     )
                     KpiCard(
-                        title = "নিট লাভ (Net Profit)",
+                        title = loc(isEnglish, "নিট লাভ", "Net Profit"),
                         value = "৳${String.format("%.1f", netProfit)}",
                         icon = Icons.Default.MonetizationOn,
-                        containerColor = profitBgColor,
-                        contentColor = profitTextColor,
                         iconTint = profitIconTint,
+                        onClick = { viewModel.navigateTo(AppScreen.Transactions) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    KpiCard(
+                        title = loc(isEnglish, "মোট পণ্য", "Total Products"),
+                        value = loc(isEnglish, "$totalProductsCount টি", "$totalProductsCount Items"),
+                        icon = Icons.Default.Inventory2,
+                        iconTint = productsIconTint,
+                        onClick = { viewModel.navigateTo(AppScreen.Products) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    KpiCard(
+                        title = loc(isEnglish, "মোট ক্রেতা", "Total Customers"),
+                        value = loc(isEnglish, "$totalCustomersCount জন", "$totalCustomersCount Customers"),
+                        icon = Icons.Default.People,
+                        iconTint = customersIconTint,
+                        onClick = { viewModel.navigateTo(AppScreen.Customers) },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -239,31 +377,28 @@ fun DashboardScreen(viewModel: SalesBookViewModel) {
         // Quick Navigation Section
         item {
             Text(
-                text = "দ্রুত মেনু (Quick Menu)",
-                fontSize = 16.sp,
+                text = loc(isEnglish, "দ্রুত মেনু", "Quick Access Menu"),
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp)
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
             )
         }
 
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 QuickNavCard(
-                    label = "নতুন বেচাকেনা\n(New Sale)",
+                    label = loc(isEnglish, "নতুন বেচাকেনা", "New Sale booking"),
                     icon = Icons.Default.AddShoppingCart,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     onClick = { viewModel.navigateTo(AppScreen.NewSale) },
                     modifier = Modifier.weight(1f).testTag("quick_nav_sale")
                 )
                 QuickNavCard(
-                    label = "পণ্য তালিকা\n(Products)",
+                    label = loc(isEnglish, "পণ্য তালিকা", "Product Directory"),
                     icon = Icons.Default.Inventory2,
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     onClick = { viewModel.navigateTo(AppScreen.Products) },
                     modifier = Modifier.weight(1f).testTag("quick_nav_products")
                 )
@@ -275,17 +410,22 @@ fun DashboardScreen(viewModel: SalesBookViewModel) {
             item {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 6.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Warning,
                         contentDescription = "Warning",
-                        tint = MaterialTheme.colorScheme.error
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "স্টক ফুরিয়ে যাচ্ছে এমন পণ্য (${lowStockProducts.size})",
-                        fontSize = 16.sp,
+                        text = loc(
+                            isEnglish,
+                            "স্টক ফুরিয়ে যাচ্ছে এমন পণ্য (${lowStockProducts.size})",
+                            "Low Stock Alert (${lowStockProducts.size})"
+                        ),
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -293,38 +433,33 @@ fun DashboardScreen(viewModel: SalesBookViewModel) {
             }
 
             items(lowStockProducts) { product ->
-                LowStockItemRow(product)
+                LowStockItemRow(product, isEnglish)
             }
         } else {
             item {
-                Card(
+                GlassCard(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    padding = 12.dp
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = "Perfect Stock Status",
-                            tint = Color(0xFF2E7D32)
+                            tint = Color(0xFF2E7D32),
+                            modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "সব পণ্যের স্টক পর্যাপ্ত রয়েছে!",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
+                            text = loc(isEnglish, "সব পণ্যের স্টক পর্যাপ্ত রয়েছে!", "All items have sufficient stock level!"),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
                             color = Color(0xFF2E7D32)
                         )
                     }
                 }
             }
-        }
-        
-        item {
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -339,15 +474,20 @@ fun ReportFilterButton(
     Button(
         onClick = onClick,
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+            containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
             contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
         ),
         shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(vertical = 12.dp),
-        modifier = modifier
+        contentPadding = PaddingValues(vertical = 8.dp),
+        modifier = modifier.height(38.dp)
     ) {
-        Text(text = label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Text(text = label, fontWeight = FontWeight.Bold, fontSize = 12.sp)
     }
+}
+
+fun formatShortDate(timestamp: Long): String {
+    val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+    return sdf.format(java.util.Date(timestamp))
 }
 
 @Composable
@@ -355,47 +495,40 @@ fun KpiCard(
     title: String,
     value: String,
     icon: ImageVector,
-    containerColor: Color,
-    contentColor: Color,
     iconTint: Color,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    GlassCard(
+        onClick = onClick,
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        padding = 14.dp
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     fontSize = 12.sp,
-                    color = contentColor.copy(alpha = 0.75f),
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    fontWeight = FontWeight.SemiBold
                 )
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(20.dp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = value,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = value,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = contentColor
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(22.dp)
             )
         }
     }
@@ -405,55 +538,47 @@ fun KpiCard(
 fun QuickNavCard(
     label: String,
     icon: ImageVector,
-    containerColor: Color,
-    contentColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    GlassCard(
         onClick = onClick,
-        modifier = modifier.height(110.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        modifier = modifier,
+        padding = 12.dp
     ) {
-        Column(
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxWidth()
+                .height(40.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(28.dp)
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = label,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                color = contentColor,
-                textAlign = TextAlign.Center,
-                lineHeight = 16.sp
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
             )
         }
     }
 }
 
 @Composable
-fun LowStockItemRow(product: Product) {
-    Card(
+fun LowStockItemRow(product: Product, isEnglish: Boolean) {
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
-        shape = RoundedCornerShape(8.dp)
+        padding = 12.dp
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -463,20 +588,21 @@ fun LowStockItemRow(product: Product) {
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "বিক্রয়মূল্য: ৳${product.sellingPrice}",
+                    text = loc(isEnglish, "বিক্রয়মূল্য: ৳${product.sellingPrice}", "Price: ৳${product.sellingPrice}"),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(MaterialTheme.colorScheme.error)
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "স্টক: ${product.stock} টি",
+                    text = loc(isEnglish, "স্টক: ${product.stock} ${product.unit}", "Stock: ${product.stock} ${product.unit}"),
                     color = Color.White,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold

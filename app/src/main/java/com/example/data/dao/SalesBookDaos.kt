@@ -54,6 +54,9 @@ interface SaleDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSale(sale: Sale): Long
 
+    @Update
+    suspend fun updateSale(sale: Sale)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSaleItem(saleItem: SaleItem): Long
 

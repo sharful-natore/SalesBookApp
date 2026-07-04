@@ -3,6 +3,8 @@ package com.example.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,12 +25,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.components.GlassCard
+import com.example.ui.components.loc
 import com.example.data.model.Product
 import com.example.viewmodel.SalesBookViewModel
 
 @Composable
 fun ProductsScreen(viewModel: SalesBookViewModel) {
     val productsList by viewModel.products.collectAsStateWithLifecycle()
+    val isEnglish by viewModel.isEnglish.collectAsStateWithLifecycle()
     var searchQuery by remember { mutableStateOf("") }
     var showAddDialog by remember { mutableStateOf(false) }
     var productToEdit by remember { mutableStateOf<Product?>(null) }
@@ -43,6 +48,7 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddDialog = true },
@@ -58,8 +64,8 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -70,12 +76,13 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
                     imageVector = Icons.Default.Inventory2,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(24.dp)
                 )
                 Text(
-                    text = "পণ্য ও ইনভেন্টরি (Products & Stock)",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    text = loc(isEnglish, "পণ্য ও ইনভেন্টরি", "Products & Inventory"),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
                 )
             }
 
@@ -83,20 +90,22 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("নাম দিয়ে পণ্য খুজুন...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                placeholder = { Text(loc(isEnglish, "নাম দিয়ে পণ্য খুঁজুন...", "Search products by name..."), fontSize = 13.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(18.dp)) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear")
+                            Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
                         }
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(52.dp)
                     .testTag("product_search_input"),
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp)
+                textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                shape = RoundedCornerShape(8.dp)
             )
 
             // Products Listing
@@ -109,16 +118,24 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Category,
                             contentDescription = "Empty",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(64.dp)
+                            modifier = Modifier.size(56.dp)
                         )
                         Text(
-                            text = if (searchQuery.isNotEmpty()) "কোনো পণ্য পাওয়া যায়নি!" else "ইনভেন্টরি খালি! নিচে ডানদিকের বোতাম চেপে পণ্য যোগ করুন।",
+                            text = if (searchQuery.isNotEmpty()) {
+                                loc(isEnglish, "কোনো পণ্য পাওয়া যায়নি!", "No products found matching search!")
+                            } else {
+                                loc(
+                                    isEnglish,
+                                    "ইনভেন্টরি খালি! নিচে ডানদিকের বোতাম চেপে নতুন পণ্য যোগ করুন।",
+                                    "Your inventory is empty! Use the + button at the bottom right to add items."
+                                )
+                            },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.sp,
@@ -130,11 +147,12 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(filteredProducts, key = { it.id }) { product ->
                         ProductItemCard(
                             product = product,
+                            isEnglish = isEnglish,
                             onEdit = { productToEdit = product },
                             onDelete = { productToDelete = product }
                         )
@@ -147,10 +165,11 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
     // Add Product Dialog
     if (showAddDialog) {
         ProductFormDialog(
-            title = "নতুন পণ্য যোগ করুন",
+            title = loc(isEnglish, "নতুন পণ্য যোগ করুন", "Add New Product"),
+            isEnglish = isEnglish,
             onDismiss = { showAddDialog = false },
-            onConfirm = { name, buyPrice, sellPrice, stock ->
-                viewModel.addProduct(name, buyPrice, sellPrice, stock) {
+            onConfirm = { name, buyPrice, sellPrice, stock, unit ->
+                viewModel.addProduct(name, buyPrice, sellPrice, stock, unit) {
                     showAddDialog = false
                 }
             }
@@ -160,11 +179,12 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
     // Edit Product Dialog
     productToEdit?.let { product ->
         ProductFormDialog(
-            title = "পণ্য সংশোধন করুন",
+            title = loc(isEnglish, "পণ্য সংশোধন করুন", "Edit Product Details"),
             product = product,
+            isEnglish = isEnglish,
             onDismiss = { productToEdit = null },
-            onConfirm = { name, buyPrice, sellPrice, stock ->
-                viewModel.updateProduct(product.copy(name = name, purchasePrice = buyPrice, sellingPrice = sellPrice, stock = stock)) {
+            onConfirm = { name, buyPrice, sellPrice, stock, unit ->
+                viewModel.updateProduct(product.copy(name = name, purchasePrice = buyPrice, sellingPrice = sellPrice, stock = stock, unit = unit)) {
                     productToEdit = null
                 }
             }
@@ -175,8 +195,8 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
     productToDelete?.let { product ->
         AlertDialog(
             onDismissRequest = { productToDelete = null },
-            title = { Text("পণ্য মুছে ফেলার সতর্কতা", fontWeight = FontWeight.Bold) },
-            text = { Text("'${product.name}' পণ্যটি কি ইনভেন্টরি থেকে নিশ্চিতভাবে মুছে ফেলতে চান?") },
+            title = { Text(loc(isEnglish, "পণ্য মুছে ফেলার সতর্কতা", "Delete Product Alert"), fontWeight = FontWeight.Bold) },
+            text = { Text(loc(isEnglish, "'${product.name}' পণ্যটি কি ইনভেন্টরি থেকে নিশ্চিতভাবে মুছে ফেলতে চান?", "Are you sure you want to permanently delete '${product.name}' from inventory?")) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -187,12 +207,12 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.testTag("delete_confirm_btn")
                 ) {
-                    Text("হ্যাঁ, ডিলিট করুন")
+                    Text(loc(isEnglish, "হ্যাঁ, ডিলিট করুন", "Yes, Delete"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { productToDelete = null }) {
-                    Text("বাতিল")
+                    Text(loc(isEnglish, "বাতিল", "Cancel"))
                 }
             }
         )
@@ -202,26 +222,24 @@ fun ProductsScreen(viewModel: SalesBookViewModel) {
 @Composable
 fun ProductItemCard(
     product: Product,
+    isEnglish: Boolean,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(12.dp)
+        cornerRadius = 12.dp,
+        padding = 14.dp
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = product.name,
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -231,16 +249,16 @@ fun ProductItemCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("ক্রয়মূল্য", fontSize = 11.sp, color = Color.Gray)
-                        Text("৳${product.purchasePrice}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFC62828))
+                        Text(loc(isEnglish, "ক্রয়মূল্য", "Purchase"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
+                        Text("৳${product.purchasePrice}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE57373))
                     }
                     Column {
-                        Text("বিক্রয়মূল্য", fontSize = 11.sp, color = Color.Gray)
-                        Text("৳${product.sellingPrice}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2E7D32))
+                        Text(loc(isEnglish, "বিক্রয়মূল্য", "Selling"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
+                        Text("৳${product.sellingPrice}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF81C784))
                     }
                     Column {
-                        Text("স্টক", fontSize = 11.sp, color = Color.Gray)
-                        Text("${product.stock} টি", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (product.stock <= 5) Color.Red else Color.Black)
+                        Text(loc(isEnglish, "স্টক", "Stock"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
+                        Text("${product.stock} ${product.unit}", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = if (product.stock <= 5) Color(0xFFEF5350) else MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -248,18 +266,20 @@ fun ProductItemCard(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onEdit, modifier = Modifier.testTag("edit_product_${product.id}")) {
+                IconButton(onClick = onEdit, modifier = Modifier.size(40.dp).testTag("edit_product_${product.id}")) {
                     Icon(
                         imageVector = Icons.Default.Edit,
                         contentDescription = "Edit Product",
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-                IconButton(onClick = onDelete, modifier = Modifier.testTag("delete_product_${product.id}")) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(40.dp).testTag("delete_product_${product.id}")) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete Product",
-                        tint = MaterialTheme.colorScheme.error
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -267,17 +287,20 @@ fun ProductItemCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductFormDialog(
     title: String,
     product: Product? = null,
+    isEnglish: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, purchasePrice: Double, sellingPrice: Double, stock: Int) -> Unit
+    onConfirm: (name: String, purchasePrice: Double, sellingPrice: Double, stock: Int, unit: String) -> Unit
 ) {
     var name by remember { mutableStateOf(product?.name ?: "") }
     var purchasePrice by remember { mutableStateOf(product?.purchasePrice?.toString() ?: "") }
     var sellingPrice by remember { mutableStateOf(product?.sellingPrice?.toString() ?: "") }
     var stock by remember { mutableStateOf(product?.stock?.toString() ?: "") }
+    var unit by remember { mutableStateOf(product?.unit ?: "Pcs") }
 
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
@@ -294,14 +317,14 @@ fun ProductFormDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("পণ্যের নাম (Product Name)") },
+                    label = { Text(loc(isEnglish, "পণ্যের নাম", "Product Name")) },
                     modifier = Modifier.fillMaxWidth().testTag("product_dialog_name"),
                     singleLine = true
                 )
                 OutlinedTextField(
                     value = purchasePrice,
                     onValueChange = { purchasePrice = it },
-                    label = { Text("ক্রয়মূল্য (Purchase Price)") },
+                    label = { Text(loc(isEnglish, "ক্রয়মূল্য", "Purchase Price (৳)")) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth().testTag("product_dialog_buy_price"),
                     singleLine = true
@@ -309,7 +332,7 @@ fun ProductFormDialog(
                 OutlinedTextField(
                     value = sellingPrice,
                     onValueChange = { sellingPrice = it },
-                    label = { Text("বিক্রয়মূল্য (Selling Price)") },
+                    label = { Text(loc(isEnglish, "বিক্রয়মূল্য", "Selling Price (৳)")) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth().testTag("product_dialog_sell_price"),
                     singleLine = true
@@ -317,11 +340,37 @@ fun ProductFormDialog(
                 OutlinedTextField(
                     value = stock,
                     onValueChange = { stock = it },
-                    label = { Text("স্টক সংখ্যা (Current Stock)") },
+                    label = { Text(loc(isEnglish, "স্টক সংখ্যা", "Current Stock")) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth().testTag("product_dialog_stock"),
                     singleLine = true
                 )
+
+                // Unit Selection
+                Text(
+                    text = loc(isEnglish, "পরিমাপের একক", "Unit of Measure"),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                val unitOptions = listOf("Pcs", "Kg", "Ltr", "Bag", "Box", "Metre")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    unitOptions.forEach { option ->
+                        val isSelected = unit == option
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { unit = option },
+                            label = { Text(option) },
+                            modifier = Modifier.testTag("unit_chip_$option")
+                        )
+                    }
+                }
 
                 AnimatedVisibility(visible = errorMsg != null) {
                     Text(
@@ -337,35 +386,35 @@ fun ProductFormDialog(
             Button(
                 onClick = {
                     if (name.trim().isEmpty()) {
-                        errorMsg = "দয়া করে পণ্যের নাম লিখুন।"
+                        errorMsg = loc(isEnglish, "দয়া করে পণ্যের নাম লিখুন।", "Please enter product name.")
                         return@Button
                     }
                     val buy = purchasePrice.toDoubleOrNull()
                     if (buy == null || buy < 0) {
-                        errorMsg = "দয়া করে সঠিক ক্রয়মূল্য লিখুন।"
+                        errorMsg = loc(isEnglish, "দয়া করে সঠিক ক্রয়মূল্য লিখুন।", "Please enter a valid purchase price.")
                         return@Button
                     }
                     val sell = sellingPrice.toDoubleOrNull()
                     if (sell == null || sell < 0) {
-                        errorMsg = "দয়া করে সঠিক বিক্রয়মূল্য লিখুন।"
+                        errorMsg = loc(isEnglish, "দয়া করে সঠিক বিক্রয়মূল্য লিখুন।", "Please enter a valid selling price.")
                         return@Button
                     }
                     val stk = stock.toIntOrNull()
                     if (stk == null || stk < 0) {
-                        errorMsg = "দয়া করে সঠিক স্টক সংখ্যা লিখুন।"
+                        errorMsg = loc(isEnglish, "দয়া করে সঠিক স্টক সংখ্যা লিখুন।", "Please enter a valid stock level.")
                         return@Button
                     }
 
-                    onConfirm(name.trim(), buy, sell, stk)
+                    onConfirm(name.trim(), buy, sell, stk, unit)
                 },
                 modifier = Modifier.testTag("product_dialog_confirm")
             ) {
-                Text("নিশ্চিত করুন")
+                Text(loc(isEnglish, "নিশ্চিত করুন", "Confirm"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("বাতিল")
+                Text(loc(isEnglish, "বাতিল", "Cancel"))
             }
         }
     )

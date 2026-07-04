@@ -11,7 +11,8 @@ data class Product(
     val name: String,
     val purchasePrice: Double, // ক্রয়মূল্য
     val sellingPrice: Double,  // বিক্রয়মূল্য
-    val stock: Int             // বর্তমান স্টক
+    val stock: Int,            // বর্তমান স্টক
+    val unit: String = "Pcs"   // একক (যেমন: পিস, কেজি, লিটার)
 )
 
 @JsonClass(generateAdapter = true)
@@ -54,7 +55,8 @@ data class ShopProfile(
     @PrimaryKey val id: Int = 1,
     val name: String = "আমার ডিজিটাল ব্যবসা খাতা",
     val phone: String = "01700000000",
-    val address: String = "ঢাকা, বাংলাদেশ"
+    val address: String = "ঢাকা, বাংলাদেশ",
+    val logoUri: String? = null
 )
 
 // UI-specific class representing a Sale with its detailed items

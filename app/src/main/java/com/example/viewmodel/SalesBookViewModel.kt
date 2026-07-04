@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.backup.BackupManager
@@ -29,6 +30,8 @@ class SalesBookViewModel(application: Application) : AndroidViewModel(applicatio
     private val repository = SalesBookRepository(db)
     private val backupManager = BackupManager(repository, application)
 
+    private val prefs = application.getSharedPreferences("sales_book_prefs", Context.MODE_PRIVATE)
+
     // Screen navigation state
     private val _currentScreen = MutableStateFlow(AppScreen.Dashboard)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
@@ -37,12 +40,24 @@ class SalesBookViewModel(application: Application) : AndroidViewModel(applicatio
         _currentScreen.value = screen
     }
 
-    // App Theme State (Dark Mode togglable in settings)
-    private val _isDarkMode = MutableStateFlow(false)
+    // App Theme State (Dark Mode togglable in settings and persisted)
+    private val _isDarkMode = MutableStateFlow(prefs.getBoolean("is_dark_mode", false))
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
 
     fun toggleDarkMode() {
-        _isDarkMode.value = !_isDarkMode.value
+        val newValue = !_isDarkMode.value
+        _isDarkMode.value = newValue
+        prefs.edit().putBoolean("is_dark_mode", newValue).apply()
+    }
+
+    // Language State (Bengali vs. English)
+    private val _isEnglish = MutableStateFlow(prefs.getBoolean("is_english", false))
+    val isEnglish: StateFlow<Boolean> = _isEnglish.asStateFlow()
+
+    fun toggleLanguage() {
+        val newValue = !_isEnglish.value
+        _isEnglish.value = newValue
+        prefs.edit().putBoolean("is_english", newValue).apply()
     }
 
     // Products Flow
@@ -233,9 +248,9 @@ class SalesBookViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     // Product CRUD operations
-    fun addProduct(name: String, purchasePrice: Double, sellingPrice: Double, stock: Int, onComplete: () -> Unit) {
+    fun addProduct(name: String, purchasePrice: Double, sellingPrice: Double, stock: Int, unit: String = "Pcs", onComplete: () -> Unit) {
         viewModelScope.launch {
-            repository.insertProduct(Product(name = name, purchasePrice = purchasePrice, sellingPrice = sellingPrice, stock = stock))
+            repository.insertProduct(Product(name = name, purchasePrice = purchasePrice, sellingPrice = sellingPrice, stock = stock, unit = unit))
             onComplete()
         }
     }
@@ -277,9 +292,9 @@ class SalesBookViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     // Shop settings operation
-    fun updateShopSettings(name: String, phone: String, address: String, onComplete: () -> Unit) {
+    fun updateShopSettings(name: String, phone: String, address: String, logoUri: String?, onComplete: () -> Unit) {
         viewModelScope.launch {
-            repository.insertOrUpdateShopProfile(ShopProfile(name = name, phone = phone, address = address))
+            repository.insertOrUpdateShopProfile(ShopProfile(name = name, phone = phone, address = address, logoUri = logoUri))
             onComplete()
         }
     }
@@ -288,6 +303,50 @@ class SalesBookViewModel(application: Application) : AndroidViewModel(applicatio
     fun deleteSaleTransaction(saleId: Long) {
         viewModelScope.launch {
             repository.deleteSale(saleId)
+        }
+    }
+
+    // Collect outstanding due for a specific sale (Ledger screen)
+    fun collectSaleDue(saleId: Long, amount: Double) {
+        viewModelScope.launch {
+            val sale = sales.value.find { it.id == saleId } ?: return@launch
+            val newDue = (sale.dueAmount - amount).coerceAtLeast(0.0)
+            val newPaid = sale.paidAmount + (sale.dueAmount - newDue)
+            val newPaymentType = when {
+                newDue <= 0 -> "Full Cash"
+                else -> "Partial Paid"
+            }
+            val updatedSale = sale.copy(
+                paidAmount = newPaid,
+                dueAmount = newDue,
+                paymentType = newPaymentType
+            )
+            repository.updateSale(updatedSale)
+        }
+    }
+
+    // Collect outstanding dues from a customer (distribute to their oldest sales with dues)
+    fun collectCustomerDue(customerId: Long, amount: Double) {
+        viewModelScope.launch {
+            var remainingAmount = amount
+            val salesWithDue = sales.value.filter { it.customerId == customerId && it.dueAmount > 0 }
+                .sortedBy { it.timestamp } // oldest first
+
+            for (sale in salesWithDue) {
+                if (remainingAmount <= 0) break
+
+                val due = sale.dueAmount
+                val payToThisSale = minOf(remainingAmount, due)
+
+                val newDue = due - payToThisSale
+                val updatedSale = sale.copy(
+                    paidAmount = sale.paidAmount + payToThisSale,
+                    dueAmount = newDue,
+                    paymentType = if (newDue <= 0) "Full Cash" else "Partial Paid"
+                )
+                repository.updateSale(updatedSale)
+                remainingAmount -= payToThisSale
+            }
         }
     }
 
@@ -304,6 +363,14 @@ class SalesBookViewModel(application: Application) : AndroidViewModel(applicatio
         customStartDate.value = start
         customEndDate.value = end
         reportFilter.value = ReportFilter.Custom
+    }
+
+    fun setCustomStartDate(start: Long) {
+        customStartDate.value = start
+    }
+
+    fun setCustomEndDate(end: Long) {
+        customEndDate.value = end
     }
 
     // Filtering logic helper

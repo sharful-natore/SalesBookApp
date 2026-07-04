@@ -32,6 +32,9 @@ class SalesBookRepository(private val db: AppDatabase) {
     // Shop Profile operations
     suspend fun insertOrUpdateShopProfile(profile: ShopProfile) = shopProfileDao.insertOrUpdateShopProfile(profile)
 
+    // Update sale operation
+    suspend fun updateSale(sale: Sale) = saleDao.updateSale(sale)
+
     // New Sale Transaction with automated stock level adjustment
     suspend fun createSale(sale: Sale, items: List<SaleItem>) {
         db.withTransaction {
